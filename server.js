@@ -44,12 +44,30 @@ async function schoologyGet(path) {
   // Build the Authorization header (new nonce + timestamp each call)
   const authHeader = oauth.toHeader(oauth.authorize(requestData));
 
+  // IMPORTANT: do NOT let node-fetch transparently follow redirects.
+  // The OAuth 1.0a signature (including the nonce + timestamp) is bound to
+  // the exact request URL. If node-fetch silently follows a redirect, it
+  // replays the same Authorization header to the new location, and Schoology
+  // rejects the second request as a replay attack with:
+  //   "Duplicate timestamp/nonce combination, possible replay attack."
   const res = await fetch(url, {
     headers: {
       ...authHeader,
       Accept: 'application/json',
     },
+    redirect: 'manual',
   });
+
+  // Treat 3xx as an error with a helpful message rather than silently
+  // re-signing, so the operator can correct BASE_URL / path casing / etc.
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get('location') || '(no Location header)';
+    throw new Error(
+      `Schoology API redirected ${res.status} for ${path} -> ${location}. ` +
+      `Update the request URL to the final destination; following redirects ` +
+      `would replay the OAuth nonce and be rejected as a replay attack.`
+    );
+  }
 
   if (!res.ok) {
     const body = await res.text();
