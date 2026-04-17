@@ -32,49 +32,65 @@ const oauth = OAuth({
 
 const BASE_URL = 'https://api.schoology.com/v1';
 
+// Maximum number of redirects to follow for a single API call. Schoology
+// typically only redirects once (e.g. /users/me -> /users/<uid>), so a small
+// cap is sufficient and prevents infinite redirect loops.
+const MAX_REDIRECTS = 5;
+
 /**
  * Perform an authenticated GET request to the Schoology REST API.
+ *
+ * Redirects are followed manually by issuing a brand-new signed request to
+ * the Location URL. We cannot let node-fetch transparently follow redirects:
+ * the OAuth 1.0a signature (including the nonce + timestamp) is bound to the
+ * exact request URL, so replaying the same Authorization header against a
+ * different URL is rejected by Schoology as a replay attack with
+ *   "Duplicate timestamp/nonce combination, possible replay attack."
+ * Re-signing each hop with a fresh nonce/timestamp avoids that.
+ *
  * @param {string} path - API path, e.g. '/users/me'
  * @returns {Promise<object>} Parsed JSON response
  */
 async function schoologyGet(path) {
-  const url = `${BASE_URL}${path}`;
-  const requestData = { url, method: 'GET' };
+  let url = `${BASE_URL}${path}`;
 
-  // Build the Authorization header (new nonce + timestamp each call)
-  const authHeader = oauth.toHeader(oauth.authorize(requestData));
+  for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
+    // Build a fresh Authorization header for this exact URL (new nonce +
+    // timestamp each call, signed against the current target).
+    const authHeader = oauth.toHeader(oauth.authorize({ url, method: 'GET' }));
 
-  // IMPORTANT: do NOT let node-fetch transparently follow redirects.
-  // The OAuth 1.0a signature (including the nonce + timestamp) is bound to
-  // the exact request URL. If node-fetch silently follows a redirect, it
-  // replays the same Authorization header to the new location, and Schoology
-  // rejects the second request as a replay attack with:
-  //   "Duplicate timestamp/nonce combination, possible replay attack."
-  const res = await fetch(url, {
-    headers: {
-      ...authHeader,
-      Accept: 'application/json',
-    },
-    redirect: 'manual',
-  });
+    const res = await fetch(url, {
+      headers: {
+        ...authHeader,
+        Accept: 'application/json',
+      },
+      redirect: 'manual',
+    });
 
-  // Treat 3xx as an error with a helpful message rather than silently
-  // re-signing, so the operator can correct BASE_URL / path casing / etc.
-  if (res.status >= 300 && res.status < 400) {
-    const location = res.headers.get('location') || '(no Location header)';
-    throw new Error(
-      `Schoology API redirected ${res.status} for ${path} -> ${location}. ` +
-      `Update the request URL to the final destination; following redirects ` +
-      `would replay the OAuth nonce and be rejected as a replay attack.`
-    );
+    // On redirect, resolve the Location header against the current URL and
+    // loop to re-sign for the new destination.
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (!location) {
+        throw new Error(
+          `Schoology API redirected ${res.status} for ${path} with no Location header.`
+        );
+      }
+      url = new URL(location, url).toString();
+      continue;
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Schoology API error ${res.status} for ${path}: ${body}`);
+    }
+
+    return res.json();
   }
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Schoology API error ${res.status} for ${path}: ${body}`);
-  }
-
-  return res.json();
+  throw new Error(
+    `Schoology API exceeded ${MAX_REDIRECTS} redirects for ${path}.`
+  );
 }
 
 // ---------------------------------------------------------------------------
