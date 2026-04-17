@@ -184,6 +184,13 @@ app.get('/api/updates', async (_req, res) => {
 // ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
-  console.log(`[schoologyconnect] Server running at http://localhost:${PORT}`);
-});
+// Only bind a port when this file is executed directly (e.g. `npm start`).
+// On Vercel the file is imported as a serverless function handler, and
+// calling app.listen there would break request handling.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`[schoologyconnect] Server running at http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
