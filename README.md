@@ -65,6 +65,19 @@ Section updates are fetched in parallel (`Promise.all`), so a single failing sec
 
 ---
 
+## Deploying to Vercel
+
+This repo includes a `vercel.json` that wires `server.js` up as a serverless function and serves `public/` as static assets.
+
+1. Push the repo to GitHub, then import it at https://vercel.com/new.
+2. Leave the framework preset as **Other**; no build or output settings are needed.
+3. Under **Environment Variables**, add `SCHOOLOGY_KEY` and `SCHOOLOGY_SECRET` (do **not** set `PORT` — Vercel manages that).
+4. Click **Deploy**.
+
+If you see `Failed to load updates: Unexpected token 'T', "The page c"... is not valid JSON`, it means `/api/updates` returned Vercel's HTML 404 page. Make sure `vercel.json` is committed and the latest deployment includes it, then redeploy.
+
+---
+
 ## Ideas for extending
 
 - **Assignments**: `GET /sections/{id}/assignments` — list upcoming assignments per course.
