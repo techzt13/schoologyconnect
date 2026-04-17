@@ -1,5 +1,72 @@
 # schoologyconnect
 
-A web app that aggregates updates from all of your Schoology courses into a single feed.
+A Node.js + Express web app that aggregates updates from all of your Schoology courses into a single unified feed.
 
-Scaffolding in progress.
+---
+
+## ⚠️ Security Warning
+
+**Your consumer secret must never be exposed in frontend code.**  
+Anyone who can read your client-side JavaScript can steal the secret and impersonate you against the Schoology API. This backend exists specifically to keep signing logic and credentials server-side only.
+
+---
+
+## Setup
+
+1. **Clone the repo and enter it**
+   ```bash
+   git clone https://github.com/techzt13/schoologyconnect.git
+   cd schoologyconnect
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure credentials**  
+   Copy the example env file and fill in your key and secret from https://cishk.schoology.com/api:
+   ```bash
+   cp .env.example .env
+   # Edit .env and set SCHOOLOGY_KEY and SCHOOLOGY_SECRET
+   ```
+
+4. **Start the server**
+   ```bash
+   npm start
+   ```
+
+5. **Open the app**  
+   Visit http://localhost:3000 in your browser.
+
+---
+
+## How it works
+
+The app uses **two-legged OAuth 1.0a** to authenticate every request to the Schoology REST API. Unlike three-legged OAuth (which requires a user to explicitly grant access), two-legged OAuth uses only the consumer key and secret you generated at `/api` on your school's Schoology instance. Each outgoing request is signed with an HMAC-SHA1 signature that includes a nonce and timestamp, so the secret is never transmitted directly.
+
+Three Schoology API endpoints are used:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /users/me` | Retrieve the current user's `uid` and display name |
+| `GET /users/{uid}/sections` | List all course sections the user is enrolled in |
+| `GET /sections/{id}/updates?with_attachments=1&limit=20` | Fetch the latest updates for each section |
+
+Section updates are fetched in parallel (`Promise.all`), so a single failing section won't break the entire response — it will surface its error inline.
+
+---
+
+## Notes
+
+- **Rate limits**: Schoology allows roughly 50 requests per 5 seconds per consumer key. Fetching updates for 10–20 courses in parallel is well within this limit; cache responses if you have many more.
+- **Filtering active sections**: `/users/{uid}/sections` may include archived or past-year courses. Append `?active=1` to the request to limit results to currently active sections.
+- **Google SSO is irrelevant to the API**: You log in to the Schoology web UI via Google SSO, but the REST API is authenticated entirely by the consumer key/secret. No Google auth flow is required.
+
+---
+
+## Ideas for extending
+
+- **Assignments**: `GET /sections/{id}/assignments` — list upcoming assignments per course.
+- **Grades**: `GET /users/{uid}/grades` — retrieve the authenticated user's grades.
+- **Multi-user support**: Implement three-legged OAuth so other users at your school can log in and see their own feeds (request token → user authorizes at `cishk.schoology.com/oauth/authorize` → access token).

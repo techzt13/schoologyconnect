@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Schoology Updates</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f6fa;
+      color: #24292f;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      max-width: 800px;
+      margin: 0 auto 1.5rem;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    #subtitle {
+      color: #57606a;
+      font-size: 0.95rem;
+    }
+
+    #feed {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-course {
+      color: #0969da;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 0.35rem;
+    }
+
+    .card-meta {
+      color: #57606a;
+      font-size: 0.82rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .card-body {
+      font-size: 0.95rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .loading {
+      color: #57606a;
+      font-style: italic;
+    }
+
+    .error-msg {
+      background: #fff8f8;
+      border: 1px solid #f85149;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      color: #cf222e;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>My Schoology Updates</h1>
+    <p id="subtitle">Loading…</p>
+  </header>
+
+  <main id="feed">
+    <p class="loading">Loading…</p>
+  </main>
+
+  <script>
+    fetch('/api/updates')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var subtitle = document.getElementById('subtitle');
+        var feed = document.getElementById('feed');
+
+        // Show error if the API returned one
+        if (data.error) {
+          subtitle.textContent = '';
+          feed.innerHTML = '<div class="error-msg">Error: ' + escapeHtml(data.error) + '</div>';
+          return;
+        }
+
+        // Display the logged-in user's name
+        subtitle.textContent = 'Logged in as ' + escapeHtml(data.me.name);
+
+        if (!data.feed || data.feed.length === 0) {
+          feed.innerHTML = '<p class="loading">No updates found.</p>';
+          return;
+        }
+
+        // Render each update card
+        feed.innerHTML = data.feed.map(function(u) {
+          var dateStr = new Date(u.created * 1000).toLocaleString();
+          var comments = u.num_comments
+            ? ' &middot; <span aria-label="comments">&#128172;</span> ' + u.num_comments
+            : '';
+          return '<div class="card">' +
+            '<div class="card-course">' + escapeHtml(u.course_title || '') + '</div>' +
+            '<div class="card-meta">' +
+              escapeHtml(u.display_name || '') + ' &middot; ' + escapeHtml(dateStr) + comments +
+            '</div>' +
+            '<div class="card-body">' + escapeHtml(u.body || '') + '</div>' +
+            '</div>';
+        }).join('');
+      })
+      .catch(function(err) {
+        document.getElementById('subtitle').textContent = '';
+        document.getElementById('feed').innerHTML =
+          '<div class="error-msg">Failed to load updates: ' + escapeHtml(err.message) + '</div>';
+      });
+
+    /** Escape HTML special characters to prevent XSS. */
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>
