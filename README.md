@@ -29,6 +29,7 @@ Anyone who can read your client-side JavaScript can steal the secret and imperso
    ```bash
    cp .env.example .env
    # Edit .env and set SCHOOLOGY_KEY and SCHOOLOGY_SECRET
+   # Optionally set GITHUB_TOKEN to enable AI-cleaned updates (see below)
    ```
 
 4. **Start the server**
@@ -62,6 +63,30 @@ Section updates are fetched in parallel (`Promise.all`), so a single failing sec
 - **Rate limits**: Schoology allows roughly 50 requests per 5 seconds per consumer key. Fetching updates for 10–20 courses in parallel is well within this limit; cache responses if you have many more.
 - **Filtering active sections**: `/users/{uid}/sections` may include archived or past-year courses. Append `?active=1` to the request to limit results to currently active sections.
 - **Google SSO is irrelevant to the API**: You log in to the Schoology web UI via Google SSO, but the REST API is authenticated entirely by the consumer key/secret. No Google auth flow is required.
+
+---
+
+## AI-cleaned updates (optional)
+
+If you have a GitHub Copilot Pro account, set `GITHUB_TOKEN` in your `.env` to
+your Copilot-enabled GitHub token. The server will exchange it for a
+short-lived Copilot session token and run each Schoology update body through
+GitHub Copilot's chat API to produce a short, plain-language summary. The
+rewritten text is shown in the feed, with a "Show original" toggle on each
+card. The raw body is never discarded.
+
+- **Default model**: `gpt-4o-mini` (cheap and fast). Override with `COPILOT_MODEL`.
+- **Caching**: summaries are cached in-memory by update id, so each update is
+  only rewritten once per server process.
+- **Graceful degradation**: if `GITHUB_TOKEN` is not set, or if the Copilot
+  API call fails, the feed falls back to the raw Schoology text.
+
+Endpoints used:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET https://api.github.com/copilot_internal/v2/token` | Exchange GitHub token for a Copilot session token |
+| `POST https://api.githubcopilot.com/chat/completions`   | Rewrite each update body |
 
 ---
 
