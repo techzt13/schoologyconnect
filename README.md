@@ -90,6 +90,63 @@ Endpoints used:
 
 ---
 
+## Email notifications (optional)
+
+The server can email a configurable list of recipients every time a **new**
+Schoology update is detected. Each email contains:
+
+- the **course name**
+- the **person who posted** the update
+- the **AI summary** (if `GITHUB_TOKEN` is configured — otherwise a placeholder)
+- the **original update body**
+
+### 1. Create a Gmail app password
+
+Gmail no longer accepts plain account passwords for SMTP. You need an *app
+password*:
+
+1. Go to <https://myaccount.google.com/security> and enable **2-Step
+   Verification** on the sending account (`zackt.atp@gmail.com`).
+2. Open <https://myaccount.google.com/apppasswords>.
+3. Create a new app password (name it e.g. `schoologyconnect`). Google will
+   show you a 16-character password — copy it.
+
+### 2. Add the SMTP settings to your `.env`
+
+```env
+SMTP_USER=zackt.atp@gmail.com
+SMTP_PASS=the_16_char_app_password
+NOTIFY_EMAILS=zackt.atp@gmail.com,klpgiraffe@gmail.com
+NOTIFY_FROM=zackt.atp@gmail.com
+```
+
+Notifications are enabled automatically as soon as `SMTP_USER` and `SMTP_PASS`
+are present. If either is missing, the feature is silently disabled and the
+app behaves exactly as before.
+
+### 3. How "new" is determined
+
+The server keeps an in-memory set of update ids it has already seen. The
+**first** call to `/api/updates` after the process starts primes this set
+without sending anything, so you don't get flooded with the existing backlog.
+From that point on, any update id not in the set triggers an email to every
+address in `NOTIFY_EMAILS` and is then added to the set.
+
+> ⚠️ **Serverless caveat**: on platforms like Vercel, each cold start creates
+> a fresh process with an empty "seen" set, so emails won't reliably fire.
+> For notifications, run the server as a long-lived process
+> (e.g. `npm start` on a small VM / Render / Railway / Fly.io). A durable
+> store (Redis, a database, or a file) would be required to make this work
+> reliably in serverless.
+
+### 4. Deploying for reliable notifications
+
+On Vercel, add the same env vars under **Settings → Environment Variables**,
+but be aware of the caveat above. If you want guaranteed delivery, run
+`npm start` on any always-on host and add the env vars there.
+
+---
+
 ## Deploying to Vercel
 
 This repo includes a `vercel.json` that wires `server.js` up as a serverless function and serves `public/` as static assets.

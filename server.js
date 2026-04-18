@@ -5,6 +5,7 @@ const express = require('express');
 const OAuth = require('oauth-1.0a');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
+const nodemailer = require('nodemailer');
 
 // ---------------------------------------------------------------------------
 // Validate required environment variables at startup
@@ -12,6 +13,19 @@ const fetch = require('node-fetch');
 const { SCHOOLOGY_KEY, SCHOOLOGY_SECRET, PORT = 3000 } = process.env;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const COPILOT_MODEL = process.env.COPILOT_MODEL || 'gpt-4o-mini';
+
+// Email notification config. All optional — if SMTP_USER/SMTP_PASS are unset,
+// the notifier is disabled and the app behaves exactly as before.
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const NOTIFY_FROM = process.env.NOTIFY_FROM || SMTP_USER;
+// Default to the two addresses requested in the task; override via env if you
+// want a different recipient list.
+const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS ||
+  'zackt.atp@gmail.com,klpgiraffe@gmail.com')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 if (!SCHOOLOGY_KEY || !SCHOOLOGY_SECRET) {
   console.error(
@@ -225,6 +239,136 @@ async function summarizeUpdate(body, id) {
 }
 
 // ---------------------------------------------------------------------------
+// Email notifications for new Schoology updates
+//
+// The first time /api/updates is handled by this server process, every
+// currently-visible update id is recorded in `notifiedUpdateIds` *without*
+// sending any emails — this avoids blasting the entire backlog out on
+// startup. On subsequent calls, any update id that is not already in the set
+// is considered "new": an email is sent to NOTIFY_EMAILS and the id is
+// recorded.
+//
+// Caveat: the "seen" set lives in process memory. On a long-running server
+// (`npm start`) this works out of the box. On serverless platforms like
+// Vercel, function instances are short-lived, so each cold start will
+// re-prime and no emails will fire; durable storage (Redis, a database, etc.)
+// would be required there. This is documented in README.md.
+// ---------------------------------------------------------------------------
+
+const notifierEnabled = Boolean(SMTP_USER && SMTP_PASS && NOTIFY_EMAILS.length);
+const notifiedUpdateIds = new Set();
+let notifierPrimed = false;
+let mailTransporter = null;
+
+function getMailTransporter() {
+  if (!notifierEnabled) return null;
+  if (mailTransporter) return mailTransporter;
+  mailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+  return mailTransporter;
+}
+
+/**
+ * Escape a string for safe interpolation into HTML.
+ */
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Send a single notification email for a new Schoology update.
+ * Errors are logged but never thrown — notification failures must not break
+ * the /api/updates response.
+ */
+async function sendUpdateEmail(update) {
+  const transporter = getMailTransporter();
+  if (!transporter) return;
+
+  const course = update.course_title || 'Unknown course';
+  const poster = update.display_name || 'Unknown user';
+  const summary = update.summary || '(AI summary not available)';
+  const original = update.body || '(no body)';
+
+  const subject = `[Schoology] ${course} — new update from ${poster}`;
+
+  const text =
+    `Course: ${course}\n` +
+    `Posted by: ${poster}\n\n` +
+    `AI summary:\n${summary}\n\n` +
+    `Original update:\n${original}\n`;
+
+  // Escape both the summary and the original body. Schoology update bodies
+  // often contain HTML, but embedding untrusted HTML in outbound email is an
+  // XSS risk in any mail client that renders it — so we render everything as
+  // plain text with <br> for line breaks.
+  const html =
+    `<p><strong>Course:</strong> ${escapeHtml(course)}<br>` +
+    `<strong>Posted by:</strong> ${escapeHtml(poster)}</p>` +
+    `<h3>AI summary</h3>` +
+    `<p>${escapeHtml(summary).replace(/\n/g, '<br>')}</p>` +
+    `<h3>Original update</h3>` +
+    `<div>${escapeHtml(original).replace(/\n/g, '<br>')}</div>`;
+
+  try {
+    await transporter.sendMail({
+      from: NOTIFY_FROM,
+      to: NOTIFY_EMAILS.join(', '),
+      subject,
+      text,
+      html,
+    });
+  } catch (err) {
+    console.warn(
+      `[schoologyconnect] Failed to send notification for update ${update.id}: ${err.message}`
+    );
+  }
+}
+
+/**
+ * Given the current feed, determine which updates are new (unseen by this
+ * process) and send emails for them. The first call just primes the cache.
+ */
+async function notifyNewUpdates(feed) {
+  if (!notifierEnabled) return;
+
+  if (!notifierPrimed) {
+    for (const u of feed) {
+      if (u.id != null) notifiedUpdateIds.add(u.id);
+    }
+    notifierPrimed = true;
+    console.log(
+      `[schoologyconnect] Email notifier primed with ${notifiedUpdateIds.size} existing updates; recipients: ${NOTIFY_EMAILS.join(', ')}`
+    );
+    return;
+  }
+
+  const newUpdates = feed.filter(
+    (u) => u.id != null && !notifiedUpdateIds.has(u.id)
+  );
+  if (!newUpdates.length) return;
+
+  // Record ids up front so a slow-sending message doesn't cause duplicates
+  // if /api/updates is hit again while we're still emailing.
+  for (const u of newUpdates) notifiedUpdateIds.add(u.id);
+
+  console.log(
+    `[schoologyconnect] Sending email notifications for ${newUpdates.length} new update(s).`
+  );
+
+  // Send serially to avoid tripping Gmail's per-connection rate limit.
+  for (const u of newUpdates) {
+    await sendUpdateEmail(u);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Express app
 // ---------------------------------------------------------------------------
 const app = express();
@@ -330,6 +474,17 @@ app.get('/api/updates', async (_req, res) => {
       feed,
       ai: { enabled: Boolean(GITHUB_TOKEN), model: GITHUB_TOKEN ? COPILOT_MODEL : null },
     });
+
+    // Fire-and-forget: detect new updates and email the notify list. We do
+    // this *after* sending the response so slow SMTP delivery never delays
+    // the feed load. Any errors are already logged inside notifyNewUpdates.
+    if (notifierEnabled) {
+      notifyNewUpdates(feed).catch((err) => {
+        console.warn(
+          `[schoologyconnect] notifyNewUpdates failed: ${err.message}`
+        );
+      });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
