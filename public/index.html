@@ -35,6 +35,28 @@
       margin: 0 auto;
     }
 
+    .category {
+      margin-bottom: 1.5rem;
+    }
+
+    .category-header {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #24292f;
+      padding: 0.5rem 0.25rem;
+      margin-bottom: 0.5rem;
+      border-bottom: 2px solid #0969da;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .category-header .category-count {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #57606a;
+    }
+
     .card {
       background: #fff;
       border: 1px solid #d0d7de;
@@ -149,29 +171,52 @@
           return;
         }
 
-        // Render each update card
-        feed.innerHTML = data.feed.map(function(u) {
-          var dateStr = new Date(u.created * 1000).toLocaleString();
-          var comments = u.num_comments
-            ? ' &middot; <span aria-label="comments">&#128172;</span> ' + u.num_comments
-            : '';
-          var hasSummary = Boolean(u.summary);
-          var bodyHtml = escapeHtml(hasSummary ? u.summary : (u.body || ''));
-          var badge = hasSummary ? '<span class="ai-badge">AI</span>' : '';
-          var original = hasSummary && u.body
-            ? '<details class="card-original">' +
-                '<summary>Show original</summary>' +
-                '<div class="original-body">' + escapeHtml(u.body) + '</div>' +
-              '</details>'
-            : '';
-          return '<div class="card">' +
-            '<div class="card-course">' + escapeHtml(u.course_title || '') + badge + '</div>' +
-            '<div class="card-meta">' +
-              escapeHtml(u.display_name || '') + ' &middot; ' + escapeHtml(dateStr) + comments +
+        // Render updates grouped by course ("category") so the feed isn't
+        // one long mixed list. Categories are sorted by most-recent update.
+        var groups = new Map();
+        data.feed.forEach(function(u) {
+          var key = u.course_title || 'Other';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(u);
+        });
+
+        var categories = Array.from(groups.entries()).sort(function(a, b) {
+          return b[1][0].created - a[1][0].created;
+        });
+
+        feed.innerHTML = categories.map(function(entry) {
+          var title = entry[0];
+          var updates = entry[1];
+          var cards = updates.map(function(u) {
+            var dateStr = new Date(u.created * 1000).toLocaleString();
+            var comments = u.num_comments
+              ? ' &middot; <span aria-label="comments">&#128172;</span> ' + u.num_comments
+              : '';
+            var hasSummary = Boolean(u.summary);
+            var bodyHtml = escapeHtml(hasSummary ? u.summary : (u.body || ''));
+            var badge = hasSummary ? '<span class="ai-badge">AI</span>' : '';
+            var original = hasSummary && u.body
+              ? '<details class="card-original">' +
+                  '<summary>Show original</summary>' +
+                  '<div class="original-body">' + escapeHtml(u.body) + '</div>' +
+                '</details>'
+              : '';
+            return '<div class="card">' +
+              '<div class="card-meta">' +
+                escapeHtml(u.display_name || '') + ' &middot; ' + escapeHtml(dateStr) + comments + badge +
+              '</div>' +
+              '<div class="card-body">' + bodyHtml + '</div>' +
+              original +
+              '</div>';
+          }).join('');
+          return '<section class="category">' +
+            '<div class="category-header">' +
+              '<span>' + escapeHtml(title) + '</span>' +
+              '<span class="category-count">' + updates.length +
+                (updates.length === 1 ? ' update' : ' updates') + '</span>' +
             '</div>' +
-            '<div class="card-body">' + bodyHtml + '</div>' +
-            original +
-            '</div>';
+            cards +
+          '</section>';
         }).join('');
       })
       .catch(function(err) {
