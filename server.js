@@ -10,6 +10,8 @@ const fetch = require('node-fetch');
 // Validate required environment variables at startup
 // ---------------------------------------------------------------------------
 const { SCHOOLOGY_KEY, SCHOOLOGY_SECRET, PORT = 3000 } = process.env;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const COPILOT_MODEL = process.env.COPILOT_MODEL || 'gpt-4o-mini';
 
 if (!SCHOOLOGY_KEY || !SCHOOLOGY_SECRET) {
   console.error(
@@ -94,6 +96,135 @@ async function schoologyGet(path) {
 }
 
 // ---------------------------------------------------------------------------
+// GitHub Copilot chat integration
+//
+// The user supplies a GitHub token (GITHUB_TOKEN) that has Copilot access.
+// We exchange it for a short-lived Copilot session token at
+//   GET https://api.github.com/copilot_internal/v2/token
+// and cache the result until shortly before `expires_at`. We then call the
+// OpenAI-compatible chat completions endpoint at
+//   POST https://api.githubcopilot.com/chat/completions
+// with a cheap model (default gpt-4o-mini) to rewrite each Schoology update
+// into clearer prose.
+// ---------------------------------------------------------------------------
+
+// Headers required by the Copilot API to recognize us as a client.
+const COPILOT_CLIENT_HEADERS = {
+  'Editor-Version': 'vscode/1.95.0',
+  'Editor-Plugin-Version': 'copilot-chat/0.22.0',
+  'Copilot-Integration-Id': 'vscode-chat',
+  'User-Agent': 'GitHubCopilotChat/0.22.0',
+};
+
+// Cached Copilot session token: { token, expiresAt (ms since epoch) }
+let copilotTokenCache = null;
+
+/**
+ * Fetch (or reuse a cached) short-lived Copilot session token derived from
+ * the user's GitHub token. Refreshed ~1 minute before actual expiry.
+ */
+async function getCopilotToken() {
+  if (!GITHUB_TOKEN) return null;
+
+  const now = Date.now();
+  if (copilotTokenCache && copilotTokenCache.expiresAt - 60_000 > now) {
+    return copilotTokenCache.token;
+  }
+
+  const res = await fetch('https://api.github.com/copilot_internal/v2/token', {
+    headers: {
+      Authorization: `token ${GITHUB_TOKEN}`,
+      Accept: 'application/json',
+      ...COPILOT_CLIENT_HEADERS,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Copilot token exchange failed ${res.status}: ${body}`);
+  }
+
+  const data = await res.json();
+  // `expires_at` is a Unix timestamp (seconds). Fall back to 20 min if absent.
+  const expiresAt = data.expires_at
+    ? data.expires_at * 1000
+    : now + 20 * 60 * 1000;
+  copilotTokenCache = { token: data.token, expiresAt };
+  return data.token;
+}
+
+// In-memory cache of AI-rewritten update bodies, keyed by Schoology update id.
+// Schoology update bodies are immutable for a given id, so caching is safe and
+// avoids re-summarizing the same update on every page load.
+const summaryCache = new Map();
+
+/**
+ * Rewrite a Schoology update body into a cleaner, easier-to-read summary
+ * using GitHub Copilot's chat completions API. Returns null if AI is
+ * disabled or any error occurs (callers should fall back to the raw body).
+ *
+ * @param {string} body  Raw update body text from Schoology.
+ * @param {string} id    Schoology update id, used as the cache key.
+ */
+async function summarizeUpdate(body, id) {
+  if (!GITHUB_TOKEN) return null;
+  if (!body || !body.trim()) return null;
+
+  if (id != null && summaryCache.has(id)) {
+    return summaryCache.get(id);
+  }
+
+  try {
+    const copilotToken = await getCopilotToken();
+    if (!copilotToken) return null;
+
+    const res = await fetch('https://api.githubcopilot.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${copilotToken}`,
+        'Content-Type': 'application/json',
+        ...COPILOT_CLIENT_HEADERS,
+      },
+      body: JSON.stringify({
+        model: COPILOT_MODEL,
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You rewrite messages from a school learning-management system ' +
+              'into short, plain, easy-to-read text for a student. Keep all ' +
+              'factual details (dates, times, assignment names, links, ' +
+              'instructions). Strip HTML tags and boilerplate. Use simple ' +
+              'language and short sentences. If the message contains a ' +
+              'clear action or deadline, put it first. Do not invent facts. ' +
+              'Respond with only the rewritten message — no preamble, no ' +
+              'quotes, no markdown headings.',
+          },
+          { role: 'user', content: body },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.warn(
+        `[schoologyconnect] Copilot completion failed ${res.status}: ${errBody.slice(0, 200)}`
+      );
+      return null;
+    }
+
+    const data = await res.json();
+    const summary = data.choices?.[0]?.message?.content?.trim() || null;
+    if (summary && id != null) summaryCache.set(id, summary);
+    return summary;
+  } catch (err) {
+    console.warn(`[schoologyconnect] Summarization error: ${err.message}`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Express app
 // ---------------------------------------------------------------------------
 const app = express();
@@ -171,10 +302,33 @@ app.get('/api/updates', async (_req, res) => {
       )
       .sort((a, b) => b.created - a.created);
 
+    // 5. Optionally rewrite each update body with GitHub Copilot so the feed
+    //    is easier to read. Runs in parallel; individual failures fall back
+    //    to the raw body without failing the whole request.
+    if (GITHUB_TOKEN) {
+      await Promise.all(
+        feed.map(async (u) => {
+          const summary = await summarizeUpdate(u.body, u.id);
+          if (summary) u.summary = summary;
+        })
+      );
+      // Mirror summaries back onto the per-course `updates` arrays so both
+      // views stay consistent.
+      const summaryById = new Map(
+        feed.filter((u) => u.summary).map((u) => [u.id, u.summary])
+      );
+      for (const course of courses) {
+        for (const u of course.updates) {
+          if (summaryById.has(u.id)) u.summary = summaryById.get(u.id);
+        }
+      }
+    }
+
     res.json({
       me: { uid, name: me.name_display },
       courses,
       feed,
+      ai: { enabled: Boolean(GITHUB_TOKEN), model: GITHUB_TOKEN ? COPILOT_MODEL : null },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

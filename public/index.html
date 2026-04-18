@@ -65,6 +65,40 @@
       word-break: break-word;
     }
 
+    .card-original {
+      margin-top: 0.6rem;
+      font-size: 0.85rem;
+    }
+
+    .card-original summary {
+      color: #57606a;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .card-original .original-body {
+      margin-top: 0.4rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid #eaeef2;
+      color: #57606a;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .ai-badge {
+      display: inline-block;
+      background: #ddf4ff;
+      color: #0969da;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+    }
+
     .loading {
       color: #57606a;
       font-style: italic;
@@ -104,7 +138,11 @@
         }
 
         // Display the logged-in user's name
-        subtitle.textContent = 'Logged in as ' + escapeHtml(data.me.name);
+        var whoami = 'Logged in as ' + escapeHtml(data.me.name);
+        if (data.ai && data.ai.enabled) {
+          whoami += ' &middot; updates cleaned up by ' + escapeHtml(data.ai.model);
+        }
+        subtitle.innerHTML = whoami;
 
         if (!data.feed || data.feed.length === 0) {
           feed.innerHTML = '<p class="loading">No updates found.</p>';
@@ -117,12 +155,22 @@
           var comments = u.num_comments
             ? ' &middot; <span aria-label="comments">&#128172;</span> ' + u.num_comments
             : '';
+          var hasSummary = Boolean(u.summary);
+          var bodyHtml = escapeHtml(hasSummary ? u.summary : (u.body || ''));
+          var badge = hasSummary ? '<span class="ai-badge">AI</span>' : '';
+          var original = hasSummary && u.body
+            ? '<details class="card-original">' +
+                '<summary>Show original</summary>' +
+                '<div class="original-body">' + escapeHtml(u.body) + '</div>' +
+              '</details>'
+            : '';
           return '<div class="card">' +
-            '<div class="card-course">' + escapeHtml(u.course_title || '') + '</div>' +
+            '<div class="card-course">' + escapeHtml(u.course_title || '') + badge + '</div>' +
             '<div class="card-meta">' +
               escapeHtml(u.display_name || '') + ' &middot; ' + escapeHtml(dateStr) + comments +
             '</div>' +
-            '<div class="card-body">' + escapeHtml(u.body || '') + '</div>' +
+            '<div class="card-body">' + bodyHtml + '</div>' +
+            original +
             '</div>';
         }).join('');
       })
