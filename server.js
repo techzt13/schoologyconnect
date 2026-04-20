@@ -26,16 +26,6 @@ const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS ||
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
-// Updates created more recently than this many seconds ago are treated as
-// "new" and will trigger an email. This is the key mechanism that makes
-// notifications work on serverless platforms (e.g. Vercel) where the process
-// restarts on every cold start and in-memory state cannot persist. Default
-// is 5 minutes (300 s). Set NOTIFY_NEW_WINDOW_SECONDS in your environment
-// to tune the window.
-const NOTIFY_NEW_WINDOW_SECONDS = parseInt(
-  process.env.NOTIFY_NEW_WINDOW_SECONDS || '300',
-  10
-);
 
 if (!SCHOOLOGY_KEY || !SCHOOLOGY_SECRET) {
   console.error(
@@ -251,24 +241,23 @@ async function summarizeUpdate(body, id) {
 // ---------------------------------------------------------------------------
 // Email notifications for new Schoology updates
 //
-// When SMTP_USER and SMTP_PASS are set, the server emails NOTIFY_EMAILS
-// whenever it detects a Schoology update whose creation timestamp is within
-// the last NOTIFY_NEW_WINDOW_SECONDS (default 300 s = 5 min). Using a time
-// window instead of a "prime on first call" strategy means notifications work
-// correctly even on serverless platforms like Vercel, where each cold start
-// creates a fresh process with no prior in-memory state.
+// The first time /api/updates is handled by this server process, every
+// currently-visible update id is recorded in `notifiedUpdateIds` *without*
+// sending any emails — this avoids blasting the entire backlog out on
+// startup. On subsequent calls, any update id that is not already in the set
+// is considered "new": an email is sent to NOTIFY_EMAILS and the id is
+// recorded.
 //
-// Within a single long-running process, notifiedUpdateIds prevents duplicate
-// emails for the same update id across multiple /api/updates calls.
+// Caveat: the "seen" set lives in process memory. On a long-running server
+// (`npm start`) this works out of the box. On serverless platforms like
+// Vercel, function instances are short-lived, so each cold start will
+// re-prime and no emails will fire; durable storage (Redis, a database, etc.)
+// would be required there. This is documented in README.md.
 // ---------------------------------------------------------------------------
 
 const notifierEnabled = Boolean(SMTP_USER && SMTP_PASS && NOTIFY_EMAILS.length);
-// In-memory set of update ids for which a notification has already been sent
-// (or deliberately skipped) during this process lifetime. Prevents duplicate
-// emails when the same long-running instance handles multiple /api/updates
-// requests. On Vercel cold starts this set is empty, but the timestamp window
-// (NOTIFY_NEW_WINDOW_SECONDS) ensures only truly recent updates are emailed.
 const notifiedUpdateIds = new Set();
+let notifierPrimed = false;
 let mailTransporter = null;
 
 function getMailTransporter() {
@@ -343,48 +332,38 @@ async function sendUpdateEmail(update) {
 }
 
 /**
- * Given the current feed, determine which updates are "new" and send emails
- * for them.
- *
- * An update is considered new when BOTH conditions hold:
- *   1. Its id has not been recorded in `notifiedUpdateIds` for this process.
- *   2. Its creation timestamp is within the last NOTIFY_NEW_WINDOW_SECONDS.
- *
- * Condition 2 is what makes notifications work on serverless platforms like
- * Vercel, where the process restarts on every cold start and in-memory state
- * is lost. Without a time window, each cold-start would see the entire
- * backlog as "new" and send a flood of emails — so previously we skipped
- * emailing on the first call entirely (the "priming" strategy). The downside
- * of priming on serverless is that it fires on *every* cold start, meaning
- * emails for genuinely new posts are also suppressed.
- *
- * With the time-window approach no priming step is needed: old updates are
- * silently recorded; only truly recent ones trigger an email.
+ * Given the current feed, determine which updates are new (unseen by this
+ * process) and send emails for them. The first call just primes the cache.
  */
 async function notifyNewUpdates(feed) {
   if (!notifierEnabled) return;
 
-  // Unix timestamp (seconds) of the oldest update we will notify about.
-  const cutoff = Math.floor(Date.now() / 1000) - NOTIFY_NEW_WINDOW_SECONDS;
-
-  const toNotify = [];
-  for (const u of feed) {
-    if (u.id == null || notifiedUpdateIds.has(u.id)) continue;
-    // Mark as seen regardless of age so we don't revisit it this process.
-    notifiedUpdateIds.add(u.id);
-    if (u.created > cutoff) {
-      toNotify.push(u);
+  if (!notifierPrimed) {
+    for (const u of feed) {
+      if (u.id != null) notifiedUpdateIds.add(u.id);
     }
+    notifierPrimed = true;
+    console.log(
+      `[schoologyconnect] Email notifier primed with ${notifiedUpdateIds.size} existing updates; recipients: ${NOTIFY_EMAILS.join(', ')}`
+    );
+    return;
   }
 
-  if (!toNotify.length) return;
+  const newUpdates = feed.filter(
+    (u) => u.id != null && !notifiedUpdateIds.has(u.id)
+  );
+  if (!newUpdates.length) return;
+
+  // Record ids up front so a slow-sending message doesn't cause duplicates
+  // if /api/updates is hit again while we're still emailing.
+  for (const u of newUpdates) notifiedUpdateIds.add(u.id);
 
   console.log(
-    `[schoologyconnect] Sending email notifications for ${toNotify.length} new update(s) to: ${NOTIFY_EMAILS.join(', ')}`
+    `[schoologyconnect] Sending email notifications for ${newUpdates.length} new update(s).`
   );
 
   // Send serially to avoid tripping Gmail's per-connection rate limit.
-  for (const u of toNotify) {
+  for (const u of newUpdates) {
     await sendUpdateEmail(u);
   }
 }
