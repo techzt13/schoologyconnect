@@ -126,24 +126,35 @@ app behaves exactly as before.
 
 ### 3. How "new" is determined
 
-The server keeps an in-memory set of update ids it has already seen. The
-**first** call to `/api/updates` after the process starts primes this set
-without sending anything, so you don't get flooded with the existing backlog.
-From that point on, any update id not in the set triggers an email to every
-address in `NOTIFY_EMAILS` and is then added to the set.
+The server uses a **time-window approach**: an update triggers an email when
+its creation timestamp is within the last `NOTIFY_NEW_WINDOW_SECONDS` seconds
+(default **300 s = 5 minutes**). Within a single process lifetime, an update
+id is only emailed once (tracked in an in-memory set), so reloading the page
+won't cause duplicate emails.
 
-> ⚠️ **Serverless caveat**: on platforms like Vercel, each cold start creates
-> a fresh process with an empty "seen" set, so emails won't reliably fire.
-> For notifications, run the server as a long-lived process
-> (e.g. `npm start` on a small VM / Render / Railway / Fly.io). A durable
-> store (Redis, a database, or a file) would be required to make this work
-> reliably in serverless.
+This strategy works correctly on **Vercel and other serverless platforms**:
+each cold start inspects timestamps rather than relying on remembered state,
+so a genuinely new update will still fire an email even if the function
+instance was recycled since the last request.
 
-### 4. Deploying for reliable notifications
+> **Tuning the window**: If you only open the app once an hour, consider
+> setting `NOTIFY_NEW_WINDOW_SECONDS=3600` in Vercel's Environment Variables
+> so you don't miss updates posted between visits. Setting it too large may
+> cause a brief flood of emails after a long gap, so choose a value that
+> matches how often the `/api/updates` endpoint is called (e.g. browser
+> auto-refresh interval).
 
-On Vercel, add the same env vars under **Settings → Environment Variables**,
-but be aware of the caveat above. If you want guaranteed delivery, run
-`npm start` on any always-on host and add the env vars there.
+### 4. Deploying on Vercel
+
+Add `SMTP_USER`, `SMTP_PASS`, and (optionally) `NOTIFY_EMAILS` and
+`NOTIFY_NEW_WINDOW_SECONDS` under **Settings → Environment Variables** in your
+Vercel project. Redeploy after saving. Notifications will fire for any update
+created within the last `NOTIFY_NEW_WINDOW_SECONDS` seconds at the time
+`/api/updates` is fetched (e.g. when the app is opened in a browser).
+
+If you open the app less frequently than the default 5-minute window, increase
+`NOTIFY_NEW_WINDOW_SECONDS` to match your usage pattern (e.g. `3600` for
+hourly).
 
 ---
 
