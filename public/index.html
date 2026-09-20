@@ -3,186 +3,795 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>My Schoology Updates</title>
+  <meta name="theme-color" content="#f6f7f2" />
+  <title>Schoology Connect</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: light;
+      --ink: #18221d;
+      --muted: #627069;
+      --surface: #ffffff;
+      --surface-soft: #f6f7f2;
+      --line: #dce2dc;
+      --brand: #176b52;
+      --brand-dark: #0d4e3a;
+      --brand-soft: #e0f1e9;
+      --accent: #e8a23a;
+      --danger: #a62b35;
+      --danger-soft: #fff1f2;
+      --shadow: 0 18px 50px rgba(28, 49, 39, 0.08);
+      --radius-lg: 22px;
+      --radius-md: 14px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
 
     body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #f5f6fa;
-      color: #24292f;
-      padding: 2rem 1rem;
+      min-width: 320px;
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% -10%, rgba(232, 162, 58, 0.16), transparent 28rem),
+        radial-gradient(circle at 100% 10%, rgba(23, 107, 82, 0.1), transparent 30rem),
+        var(--surface-soft);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 17px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
 
-    header {
-      max-width: 800px;
-      margin: 0 auto 1.5rem;
+    button, input, select {
+      font: inherit;
     }
 
-    header h1 {
-      font-size: 1.8rem;
+    button, select {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid rgba(23, 107, 82, 0.28);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 10;
+      top: 0.75rem;
+      left: 0.75rem;
+      padding: 0.65rem 1rem;
+      transform: translateY(-150%);
+      border-radius: 10px;
+      background: var(--ink);
+      color: #fff;
       font-weight: 700;
-      margin-bottom: 0.25rem;
+      text-decoration: none;
     }
 
-    #subtitle {
-      color: #57606a;
-      font-size: 0.95rem;
+    .skip-link:focus {
+      transform: translateY(0);
     }
 
-    #feed {
-      max-width: 800px;
+    .shell {
+      width: min(1120px, calc(100% - 2rem));
       margin: 0 auto;
     }
 
-    .card {
+    .site-header {
+      padding: 2.25rem 0 1.5rem;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--ink);
+      font-size: 1.05rem;
+      font-weight: 760;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 2.25rem;
+      height: 2.25rem;
+      place-items: center;
+      border-radius: 11px;
+      background: var(--brand);
+      color: #fff;
+      box-shadow: 0 7px 18px rgba(23, 107, 82, 0.22);
+    }
+
+    .hero {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 2rem;
+      padding: 2.4rem 0 2rem;
+    }
+
+    .eyebrow {
+      margin: 0 0 0.55rem;
+      color: var(--brand);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 680px;
+      margin: 0;
+      font-size: clamp(2.25rem, 6vw, 4.65rem);
+      font-weight: 720;
+      letter-spacing: -0.055em;
+      line-height: 0.98;
+    }
+
+    #subtitle {
+      min-height: 1.6em;
+      margin: 1rem 0 0;
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    .refresh-button {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 0.55rem;
+      min-height: 48px;
+      padding: 0.7rem 1.05rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.8);
+      color: var(--ink);
+      font-weight: 700;
+      box-shadow: 0 5px 18px rgba(28, 49, 39, 0.05);
+      transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    }
+
+    .refresh-button:hover {
+      border-color: #a7b7ad;
+      box-shadow: 0 8px 22px rgba(28, 49, 39, 0.09);
+      transform: translateY(-1px);
+    }
+
+    .refresh-button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+      transform: none;
+    }
+
+    .refresh-button svg {
+      width: 1.1rem;
+      height: 1.1rem;
+    }
+
+    .refresh-button.is-loading svg {
+      animation: spin 900ms linear infinite;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) minmax(190px, 0.42fr);
+      gap: 0.75rem;
+      margin-bottom: 1.1rem;
+      padding: 0.7rem;
+      border: 1px solid rgba(220, 226, 220, 0.85);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: 0 8px 28px rgba(28, 49, 39, 0.04);
+      backdrop-filter: blur(10px);
+    }
+
+    .field {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .field svg {
+      position: absolute;
+      left: 0.9rem;
+      width: 1.1rem;
+      height: 1.1rem;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid transparent;
+      border-radius: 10px;
       background: #fff;
-      border: 1px solid #d0d7de;
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      margin-bottom: 0.75rem;
+      color: var(--ink);
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .field input {
+      padding: 0.7rem 0.85rem 0.7rem 2.75rem;
+    }
+
+    .field select {
+      padding: 0.7rem 2.4rem 0.7rem 0.9rem;
+    }
+
+    .field input:hover,
+    .field select:hover {
+      border-color: #b8c4bc;
+    }
+
+    .feed-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      margin: 1.5rem 0 0.8rem;
+    }
+
+    .feed-heading h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      letter-spacing: -0.015em;
+    }
+
+    #result-count {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    #feed {
+      display: grid;
+      gap: 0.85rem;
+      padding-bottom: 4rem;
+    }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      padding: 1.35rem 1.45rem 1.3rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 2px 3px rgba(28, 49, 39, 0.02);
+      transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+      animation: card-in 360ms both;
+    }
+
+    .card::before {
+      position: absolute;
+      top: 1.25rem;
+      bottom: 1.25rem;
+      left: 0;
+      width: 4px;
+      border-radius: 0 4px 4px 0;
+      background: var(--accent);
+      content: "";
+    }
+
+    .card:hover {
+      border-color: #c7d1ca;
+      box-shadow: var(--shadow);
+      transform: translateY(-2px);
+    }
+
+    .card:nth-child(2) { animation-delay: 45ms; }
+    .card:nth-child(3) { animation-delay: 90ms; }
+    .card:nth-child(4) { animation-delay: 135ms; }
+    .card:nth-child(n+5) { animation-delay: 180ms; }
+
+    .card-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 0.55rem;
     }
 
     .card-course {
-      color: #0969da;
-      font-weight: 600;
-      font-size: 0.85rem;
+      overflow: hidden;
+      color: var(--brand);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.075em;
+      text-overflow: ellipsis;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
-      margin-bottom: 0.35rem;
+      white-space: nowrap;
+    }
+
+    .card-date {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 0.78rem;
     }
 
     .card-meta {
-      color: #57606a;
-      font-size: 0.82rem;
-      margin-bottom: 0.6rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.75rem;
+      margin-bottom: 0.65rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .author {
+      color: var(--ink);
+      font-weight: 680;
+    }
+
+    .comment-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .comment-count svg {
+      width: 0.95rem;
+      height: 0.95rem;
     }
 
     .card-body {
-      font-size: 0.95rem;
-      line-height: 1.55;
+      max-width: 74ch;
+      font-size: 1rem;
+      line-height: 1.68;
       white-space: pre-wrap;
       word-break: break-word;
     }
 
     .card-original {
-      margin-top: 0.6rem;
-      font-size: 0.85rem;
+      margin-top: 1rem;
+      border-top: 1px solid #e9ede9;
+      font-size: 0.9rem;
     }
 
     .card-original summary {
-      color: #57606a;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      color: var(--brand);
       cursor: pointer;
+      font-weight: 700;
       user-select: none;
     }
 
     .card-original .original-body {
-      margin-top: 0.4rem;
-      padding-top: 0.5rem;
-      border-top: 1px solid #eaeef2;
-      color: #57606a;
+      padding: 0.35rem 0 0.3rem;
+      color: var(--muted);
+      line-height: 1.65;
       white-space: pre-wrap;
       word-break: break-word;
     }
 
     .ai-badge {
-      display: inline-block;
-      background: #ddf4ff;
-      color: #0969da;
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
+      display: inline-flex;
+      align-items: center;
+      margin-left: 0.45rem;
+      padding: 0.12rem 0.4rem;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+      font-size: 0.64rem;
+      font-weight: 850;
       letter-spacing: 0.05em;
-      padding: 0.1rem 0.4rem;
-      border-radius: 4px;
-      margin-left: 0.4rem;
       vertical-align: middle;
     }
 
-    .loading {
-      color: #57606a;
-      font-style: italic;
+    .state {
+      display: grid;
+      min-height: 250px;
+      place-items: center;
+      padding: 2rem;
+      border: 1px dashed #cbd4cd;
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.6);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .state-inner {
+      max-width: 480px;
+    }
+
+    .state-icon {
+      display: grid;
+      width: 3rem;
+      height: 3rem;
+      margin: 0 auto 0.85rem;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--brand-soft);
+      color: var(--brand);
+    }
+
+    .state h3 {
+      margin: 0 0 0.25rem;
+      color: var(--ink);
+      font-size: 1.1rem;
+    }
+
+    .state p {
+      margin: 0;
     }
 
     .error-msg {
-      background: #fff8f8;
-      border: 1px solid #f85149;
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      color: #cf222e;
+      border-color: #e4b3b7;
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .error-msg .state-icon {
+      background: #fbdcdf;
+      color: var(--danger);
+    }
+
+    .skeleton-card {
+      height: 170px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: #fff;
+    }
+
+    .skeleton-card::after {
+      display: block;
+      width: 200%;
+      height: 100%;
+      background: linear-gradient(100deg, transparent 30%, rgba(23, 107, 82, 0.07) 50%, transparent 70%);
+      content: "";
+      animation: shimmer 1.35s infinite;
+    }
+
+    .sr-only {
+      position: absolute;
+      overflow: hidden;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      border: 0;
+      margin: -1px;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes shimmer {
+      from { transform: translateX(-60%); }
+      to { transform: translateX(10%); }
+    }
+
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 680px) {
+      body {
+        font-size: 16px;
+      }
+
+      .shell {
+        width: min(100% - 1.1rem, 1120px);
+      }
+
+      .site-header {
+        padding-top: 1.25rem;
+      }
+
+      .hero {
+        display: block;
+        padding: 2rem 0 1.5rem;
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 13vw, 3.65rem);
+      }
+
+      .refresh-button {
+        width: 100%;
+        justify-content: center;
+        margin-top: 1.25rem;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        padding: 1.15rem 1.1rem 1.1rem 1.25rem;
+        border-radius: 17px;
+      }
+
+      .card-topline {
+        display: block;
+      }
+
+      .card-date {
+        display: block;
+        margin-top: 0.25rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (prefers-contrast: more) {
+      :root {
+        --line: #89968e;
+        --muted: #465149;
+      }
+
+      .card, .toolbar {
+        border-width: 2px;
+      }
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>My Schoology Updates</h1>
-    <p id="subtitle">Loading…</p>
+  <a class="skip-link" href="#feed">Skip to updates</a>
+
+  <header class="site-header shell">
+    <div class="brand" aria-label="Schoology Connect home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M5 7.5 12 4l7 3.5-7 3.5-7-3.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M7.5 10v4.25c0 1.2 2.05 2.75 4.5 2.75s4.5-1.55 4.5-2.75V10M19 8v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      Schoology Connect
+    </div>
+
+    <div class="hero">
+      <div>
+        <p class="eyebrow">Your daily briefing</p>
+        <h1>Everything important, in one place.</h1>
+        <p id="subtitle" aria-live="polite">Connecting to your courses…</p>
+      </div>
+      <button class="refresh-button" id="refresh-button" type="button">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+          <path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Refresh</span>
+      </button>
+    </div>
   </header>
 
-  <main id="feed">
-    <p class="loading">Loading…</p>
+  <main class="shell">
+    <section class="toolbar" aria-label="Filter updates">
+      <label class="field">
+        <span class="sr-only">Search updates</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
+          <path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input id="search" type="search" placeholder="Search updates" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="sr-only">Filter by course</span>
+        <select id="course-filter">
+          <option value="">All courses</option>
+        </select>
+      </label>
+    </section>
+
+    <div class="feed-heading">
+      <h2>Latest updates</h2>
+      <span id="result-count" aria-live="polite">Loading…</span>
+    </div>
+
+    <section id="feed" aria-label="Course updates" aria-busy="true">
+      <div class="skeleton-card" aria-hidden="true"></div>
+      <div class="skeleton-card" aria-hidden="true"></div>
+      <div class="skeleton-card" aria-hidden="true"></div>
+      <span class="sr-only">Loading updates</span>
+    </section>
   </main>
 
   <script>
-    fetch('/api/updates')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var subtitle = document.getElementById('subtitle');
-        var feed = document.getElementById('feed');
+    var updates = [];
+    var searchInput = document.getElementById('search');
+    var courseFilter = document.getElementById('course-filter');
+    var refreshButton = document.getElementById('refresh-button');
+    var feed = document.getElementById('feed');
+    var subtitle = document.getElementById('subtitle');
+    var resultCount = document.getElementById('result-count');
 
-        // Show error if the API returned one
-        if (data.error) {
-          subtitle.textContent = '';
-          feed.innerHTML = '<div class="error-msg">Error: ' + escapeHtml(data.error) + '</div>';
-          return;
-        }
+    loadUpdates();
 
-        // Display the logged-in user's name
-        var whoami = 'Logged in as ' + escapeHtml(data.me.name);
-        if (data.ai && data.ai.enabled) {
-          whoami += ' &middot; updates cleaned up by ' + escapeHtml(data.ai.model);
-        }
-        subtitle.innerHTML = whoami;
+    searchInput.addEventListener('input', renderFeed);
+    courseFilter.addEventListener('change', renderFeed);
+    refreshButton.addEventListener('click', loadUpdates);
 
-        if (!data.feed || data.feed.length === 0) {
-          feed.innerHTML = '<p class="loading">No updates found.</p>';
-          return;
-        }
+    function loadUpdates() {
+      setLoading(true);
 
-        // Render each update card
-        feed.innerHTML = data.feed.map(function(u) {
-          var dateStr = new Date(u.created * 1000).toLocaleString();
-          var comments = u.num_comments
-            ? ' &middot; <span aria-label="comments">&#128172;</span> ' + u.num_comments
-            : '';
-          var hasSummary = Boolean(u.summary);
-          var bodyHtml = escapeHtml(hasSummary ? u.summary : (u.body || ''));
-          var badge = hasSummary ? '<span class="ai-badge">AI</span>' : '';
-          var original = hasSummary && u.body
-            ? '<details class="card-original">' +
-                '<summary>Show original</summary>' +
-                '<div class="original-body">' + escapeHtml(u.body) + '</div>' +
-              '</details>'
-            : '';
-          return '<div class="card">' +
-            '<div class="card-course">' + escapeHtml(u.course_title || '') + badge + '</div>' +
-            '<div class="card-meta">' +
-              escapeHtml(u.display_name || '') + ' &middot; ' + escapeHtml(dateStr) + comments +
-            '</div>' +
-            '<div class="card-body">' + bodyHtml + '</div>' +
-            original +
-            '</div>';
+      fetch('/api/updates')
+        .then(function(response) {
+          if (!response.ok) {
+            throw new Error('The server returned an error (' + response.status + ').');
+          }
+          return response.json();
+        })
+        .then(function(data) {
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          updates = Array.isArray(data.feed) ? data.feed : [];
+          var name = data.me && data.me.name ? data.me.name : 'your account';
+          var message = 'Welcome, ' + name + '.';
+          if (data.ai && data.ai.enabled) {
+            message += ' Summaries are simplified with ' + data.ai.model + '.';
+          }
+          subtitle.textContent = message;
+          populateCourses();
+          renderFeed();
+        })
+        .catch(function(error) {
+          updates = [];
+          subtitle.textContent = 'We could not connect to your courses.';
+          resultCount.textContent = 'Unavailable';
+          feed.innerHTML = stateMarkup(
+            'error-msg',
+            'Something went wrong',
+            escapeHtml(error.message) + ' Try refreshing in a moment.',
+            '!'
+          );
+        })
+        .finally(function() {
+          setLoading(false);
+        });
+    }
+
+    function populateCourses() {
+      var currentValue = courseFilter.value;
+      var courses = updates
+        .map(function(update) { return update.course_title || 'Other'; })
+        .filter(function(course, index, all) { return all.indexOf(course) === index; })
+        .sort(function(a, b) { return a.localeCompare(b); });
+
+      courseFilter.innerHTML = '<option value="">All courses</option>' +
+        courses.map(function(course) {
+          return '<option value="' + escapeHtml(course) + '">' + escapeHtml(course) + '</option>';
         }).join('');
-      })
-      .catch(function(err) {
-        document.getElementById('subtitle').textContent = '';
-        document.getElementById('feed').innerHTML =
-          '<div class="error-msg">Failed to load updates: ' + escapeHtml(err.message) + '</div>';
+
+      if (courses.indexOf(currentValue) !== -1) {
+        courseFilter.value = currentValue;
+      }
+    }
+
+    function renderFeed() {
+      var query = searchInput.value.trim().toLocaleLowerCase();
+      var selectedCourse = courseFilter.value;
+      var filtered = updates.filter(function(update) {
+        var course = update.course_title || 'Other';
+        var searchable = [
+          course,
+          update.display_name || '',
+          update.summary || '',
+          update.body || ''
+        ].join(' ').toLocaleLowerCase();
+
+        return (!selectedCourse || course === selectedCourse) &&
+          (!query || searchable.indexOf(query) !== -1);
       });
 
-    /** Escape HTML special characters to prevent XSS. */
-    function escapeHtml(str) {
-      return String(str)
+      resultCount.textContent = filtered.length + (filtered.length === 1 ? ' update' : ' updates');
+
+      if (!filtered.length) {
+        var hasFilters = Boolean(query || selectedCourse);
+        feed.innerHTML = stateMarkup(
+          '',
+          hasFilters ? 'No matching updates' : 'You’re all caught up',
+          hasFilters ? 'Try a different search or choose another course.' : 'New course activity will appear here.',
+          hasFilters ? '⌕' : '✓'
+        );
+        return;
+      }
+
+      feed.innerHTML = filtered.map(function(update) {
+        var created = new Date(Number(update.created) * 1000);
+        var hasValidDate = !Number.isNaN(created.getTime());
+        var fullDate = hasValidDate
+          ? created.toLocaleString([], { dateStyle: 'long', timeStyle: 'short' })
+          : 'Date unavailable';
+        var shortDate = formatRelativeDate(created);
+        var hasSummary = Boolean(update.summary);
+        var body = hasSummary ? update.summary : (update.body || 'No details provided.');
+        var badge = hasSummary ? '<span class="ai-badge">Simplified</span>' : '';
+        var comments = Number(update.num_comments) > 0
+          ? '<span class="comment-count">' +
+              '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none">' +
+                '<path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.8 8.8 0 0 1-3.5-.7L4 20l1.5-4A8 8 0 1 1 20 11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>' +
+              '</svg>' +
+              update.num_comments + (Number(update.num_comments) === 1 ? ' comment' : ' comments') +
+            '</span>'
+          : '';
+        var original = hasSummary && update.body
+          ? '<details class="card-original">' +
+              '<summary>View original message</summary>' +
+              '<div class="original-body">' + escapeHtml(update.body) + '</div>' +
+            '</details>'
+          : '';
+
+        return '<article class="card">' +
+          '<div class="card-topline">' +
+            '<div class="card-course">' + escapeHtml(update.course_title || 'Other') + badge + '</div>' +
+            (hasValidDate
+              ? '<time class="card-date" datetime="' + created.toISOString() + '" title="' + escapeHtml(fullDate) + '">' +
+                  escapeHtml(shortDate) +
+                '</time>'
+              : '<span class="card-date">' + escapeHtml(shortDate) + '</span>') +
+          '</div>' +
+          '<div class="card-meta">' +
+            '<span class="author">' + escapeHtml(update.display_name || 'School update') + '</span>' +
+            comments +
+          '</div>' +
+          '<div class="card-body">' + escapeHtml(body) + '</div>' +
+          original +
+        '</article>';
+      }).join('');
+    }
+
+    function formatRelativeDate(date) {
+      if (Number.isNaN(date.getTime())) {
+        return 'Date unavailable';
+      }
+
+      var now = new Date();
+      var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      var itemDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      var daysAgo = Math.round((today - itemDay) / 86400000);
+      var time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+      if (daysAgo === 0) return 'Today, ' + time;
+      if (daysAgo === 1) return 'Yesterday, ' + time;
+      if (daysAgo > 1 && daysAgo < 7) {
+        return date.toLocaleDateString([], { weekday: 'long' }) + ', ' + time;
+      }
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+    }
+
+    function stateMarkup(className, title, message, icon) {
+      return '<div class="state ' + className + '" role="' + (className ? 'alert' : 'status') + '">' +
+        '<div class="state-inner">' +
+          '<div class="state-icon" aria-hidden="true">' + icon + '</div>' +
+          '<h3>' + title + '</h3>' +
+          '<p>' + message + '</p>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function setLoading(isLoading) {
+      feed.setAttribute('aria-busy', String(isLoading));
+      refreshButton.disabled = isLoading;
+      refreshButton.classList.toggle('is-loading', isLoading);
+      refreshButton.querySelector('span').textContent = isLoading ? 'Refreshing…' : 'Refresh';
+    }
+
+    function escapeHtml(value) {
+      return String(value)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
